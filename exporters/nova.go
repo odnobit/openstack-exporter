@@ -77,8 +77,10 @@ type NovaExporter struct {
 	BaseOpenStackExporter
 }
 
-var defaultNovaServerStatusLabels = []string{"id", "status", "name", "tenant_id", "user_id", "address_ipv4",
-	"address_ipv6", "host_id", "hypervisor_hostname", "uuid", "availability_zone", "flavor_id", "instance_libvirt"}
+var defaultNovaServerStatusLabels = []string{
+	"id", "status", "name", "tenant_id", "user_id", "address_ipv4",
+	"address_ipv6", "host_id", "hypervisor_hostname", "uuid", "availability_zone", "flavor_id", "instance_libvirt",
+}
 
 var defaultNovaMetrics = []Metric{
 	{Name: "flavors", Fn: ListFlavors},
@@ -167,7 +169,7 @@ func ListNovaAgentState(exporter *BaseOpenStackExporter, ch chan<- prometheus.Me
 	}
 
 	for _, service := range allServices {
-		var state = 0
+		state := 0
 		if service.State == "up" {
 			state = 1
 		}
@@ -466,7 +468,6 @@ func ListAllServers(exporter *BaseOpenStackExporter, ch chan<- prometheus.Metric
 
 	serverListOptions := getServerListOptions(exporter.TenantID)
 	allPagesServers, err := servers.List(exporter.Client, serverListOptions).AllPages()
-
 	if err != nil {
 		return err
 	}
@@ -603,7 +604,7 @@ func ListComputeLimits(exporter *BaseOpenStackExporter, ch chan<- prometheus.Met
 
 // ListUsage add metrics about usage
 func ListUsage(exporter *BaseOpenStackExporter, ch chan<- prometheus.Metric) error {
-	allPagesUsage, err := usage.AllTenants(exporter.Client, usage.AllTenantsOpts{Detailed: true}).AllPages()
+	allPagesUsage, err := usage.AllTenants(exporter.Client, usage.AllTenantsOpts{Detailed: true, Limit: -1}).AllPages()
 	if err != nil {
 		return err
 	}
@@ -615,11 +616,14 @@ func ListUsage(exporter *BaseOpenStackExporter, ch chan<- prometheus.Metric) err
 
 	// Server status metrics
 	for _, tenant := range allTenantsUsage {
-		for _, server := range tenant.ServerUsages {
-			ch <- prometheus.MustNewConstMetric(exporter.Metrics["server_local_gb"].Metric,
-				prometheus.GaugeValue, float64(server.LocalGB), server.Name, server.InstanceID, tenant.TenantID)
-		}
+		for _, srvUsage := range tenant.ServerUsages {
+			if srvUsage.LocalGB == 0 {
+				continue
+			}
 
+			ch <- prometheus.MustNewConstMetric(exporter.Metrics["server_local_gb"].Metric,
+				prometheus.GaugeValue, float64(srvUsage.LocalGB), srvUsage.Name, srvUsage.InstanceID, tenant.TenantID)
+		}
 	}
 
 	return nil
